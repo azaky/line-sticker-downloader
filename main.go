@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 
 	"github.com/azaky/line-sticker-downloader/util"
 	"github.com/line/line-bot-sdk-go/linebot"
@@ -18,9 +19,17 @@ const (
 	targetExportDir = "/tmp/line-stickers-export"
 )
 
+var (
+	patterns []string = []string{
+		"https://line.me/S/sticker/(\\d+)/",
+		"https://store.line.me/stickershop/product/(\\d+)/",
+	}
+)
+
 type Bot struct {
-	c    *linebot.Client
-	host string
+	c       *linebot.Client
+	host    string
+	regexps []*regexp.Regexp
 }
 
 func NewBot(secret, token, host string) *Bot {
@@ -28,7 +37,15 @@ func NewBot(secret, token, host string) *Bot {
 	if err != nil {
 		log.Fatalf("Error when initializing linebot: %s", err.Error())
 	}
-	return &Bot{l, host}
+	regexps := make([]*regexp.Regexp, 0)
+	for _, pattern := range patterns {
+		regex, err := regexp.Compile(pattern)
+		if err != nil {
+			log.Fatalf("Error compiling pattern [%s]: %s", pattern, err.Error())
+		}
+		regexps = append(regexps, regex)
+	}
+	return &Bot{l, host, regexps}
 }
 
 func (bot *Bot) Handler(w http.ResponseWriter, req *http.Request) {
@@ -63,26 +80,75 @@ func (bot *Bot) processEvents(events []*linebot.Event) {
 	for _, event := range events {
 		log.Printf("[EVENT][%s] Source: %#v", event.Type, event.Source)
 		if event.Type != linebot.EventTypeMessage {
-			bot.reply(event, "Please send me stickers!")
+			bot.reply(event, "Please send me stickers or sticker shop URL!")
 			return
 		}
-		sticker, ok := event.Message.(*linebot.StickerMessage)
-		if !ok {
-			bot.reply(event, "Please send me stickers!")
-			return
+		switch event.Message.(type) {
+		case *linebot.StickerMessage:
+			bot.processStickerMessage(event)
+		case *linebot.TextMessage:
+			bot.processTextMessage(event)
+		default:
+			bot.reply(event, "Please send me stickers or sticker shop URL!")
 		}
+	}
+}
 
-		err := bot.processSticker(sticker.PackageID)
+func (bot *Bot) processStickerMessage(event *linebot.Event) {
+	sticker, ok := event.Message.(*linebot.StickerMessage)
+	if !ok {
+		bot.reply(event, "Please send me stickers or sticker shop URL!")
+		return
+	}
 
-		if err != nil {
-			log.Printf("Error when processing sticker: %s", err.Error())
-			bot.reply(event, fmt.Sprintf("An error occured when processing your stickers: %s", err.Error()))
-		} else {
-			bot.reply(
-				event,
-				"Copy the link below and open it in your browser (because Line browser prevents downloading files)",
-				fmt.Sprintf("%s/export/%s.zip", bot.host, sticker.PackageID))
+	err := bot.processSticker(sticker.PackageID)
+
+	if err != nil {
+		log.Printf("Error when processing sticker: %s", err.Error())
+		bot.reply(event, fmt.Sprintf("An error occured when processing your stickers: %s", err.Error()))
+	} else {
+		bot.reply(
+			event,
+			"Copy the link below and open it in your browser (because Line browser prevents downloading files)",
+			fmt.Sprintf("%s/export/%s.zip", bot.host, sticker.PackageID))
+	}
+}
+
+func (bot *Bot) findStickerID(text string) string {
+	for _, regex := range bot.regexps {
+		matches := regex.FindStringSubmatch(text)
+		if matches == nil {
+			continue
 		}
+		return matches[1]
+	}
+	return ""
+}
+
+func (bot *Bot) processTextMessage(event *linebot.Event) {
+	message, ok := event.Message.(*linebot.TextMessage)
+	if !ok {
+		bot.reply(event, "Please send me stickers or sticker shop URL!")
+		return
+	}
+
+	log.Printf("text message: %#v", message)
+	id := bot.findStickerID(message.Text)
+	if id == "" {
+		bot.reply(event, "Please send me stickers or sticker shop URL!")
+		return
+	}
+
+	err := bot.processSticker(id)
+
+	if err != nil {
+		log.Printf("Error when processing sticker: %s", err.Error())
+		bot.reply(event, fmt.Sprintf("An error occured when processing your stickers: %s", err.Error()))
+	} else {
+		bot.reply(
+			event,
+			"Copy the link below and open it in your browser (because Line browser prevents downloading files)",
+			fmt.Sprintf("%s/export/%s.zip", bot.host, id))
 	}
 }
 
@@ -221,6 +287,7 @@ func main() {
 	}
 	http.Handle("/export/", http.StripPrefix("/export/", http.FileServer(http.Dir(targetExportDir))))
 
+	log.Printf("Starting server at port 8100...")
 	if err := http.ListenAndServe(":8100", nil); err != nil {
 		log.Fatal("Error listening to 8100: %s", err.Error())
 	}
