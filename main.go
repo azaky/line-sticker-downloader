@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 
 	"github.com/azaky/line-sticker-downloader/util"
 	"github.com/line/line-bot-sdk-go/linebot"
@@ -229,9 +230,13 @@ func (bot *Bot) processSticker(id string) error {
 	if err != nil {
 		log.Fatalf("Error opening target dir: %s", err.Error())
 	}
+	sort.Strings(names)
 	n := (len(names) + 19) / 20
 	for i := 0; i < n; i++ {
 		dirname := fmt.Sprintf("%s (%d:%d)", stickerName, i+1, n)
+		if n == 1 {
+			dirname = stickerName
+		}
 		if e := os.Mkdir(target+"/"+dirname, os.FileMode(0755)); e != nil {
 			log.Printf("Error running mkdir %s: %s", dirname, e.Error())
 			return fmt.Errorf("internal error")
