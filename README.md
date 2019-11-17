@@ -10,9 +10,13 @@ contains at most 20 stickers / folder), but the asset may be used elsewhere.
 
 If you just want to use the bot, you may add it as friend [here](https://line.me/R/ti/p/%40160fzrqk).
 
-But if you want to run it by yourself, you will first need a Line channel with
-Messaging API capability (create it [here](https://developers.line.biz/). Also
-make sure that Go v12+ is installed. Then:
+But if you want to run it by yourself, there are certain requirements:
+1. A Line channel with Messaging API capability (create it
+[here](https://developers.line.biz/)
+2. Go v12+
+3. `rm`, `mv`, `zip`, `unzip` installed
+
+Then:
 
 ```
 go get github.com/azaky/line-sticker-downloader
@@ -22,9 +26,9 @@ HOST="..." \
 line-sticker-downloader
 ```
 
-`CHANNEL_TOKEN` and `CHANNEL_SECRET` can be found in Line developer console.
-`HOST` is the the url of where your bot is hosted, without trailing slash (for
-example, `HOST="https://linestickerdownloader.example.com").
+`CHANNEL_TOKEN` and `CHANNEL_SECRET` can be found in the Line developer
+console. `HOST` is the the url of where your bot is hosted, without trailing
+slash (for example, `HOST="https://linestickerdownloader.example.com"`).
 
 After it is up and running, you will need to update the webhook URL in the
 Line developer console, with url `$HOST/callback` (using the example above,
